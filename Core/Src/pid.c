@@ -1,0 +1,124 @@
+#include "pid.h"
+
+float Angle_Out;//角度PWM输出
+float Speed_Out;//速度PWM输出
+
+pid pid_angle;//定义速度环pid
+pid pid_speed;//定义距离环pid
+
+/**********************
+PID配置函数:
+**********************/
+void PID_init()//初始化pid变量
+{
+	//位置环pid
+	pid_angle.Set=0.0;
+	pid_angle.Actual=0.0;
+	pid_angle.err=0.0;
+	pid_angle.err_last=0.0;
+	pid_angle.voltage=0.0;
+	pid_angle.integral=0.0;
+	pid_angle.Kp=8.0;//待调节0.043
+	pid_angle.Ki=0.005;//待调节0.0005
+	pid_angle.Kd=0.3;//待调节0.22
+	//速度环pid
+	pid_speed.Set=0.0;
+	pid_speed.Actual=0.0;
+	pid_speed.err=0.0;
+	pid_speed.err_last=0.0;
+	pid_speed.voltage=0.0;
+	pid_speed.integral=0.0;	
+//	pid_speed.Kp=0.11;//待调节0.11
+//	pid_speed.Ki=0.005;//待调节0.005
+//	pid_speed.Kd=0.0008;//待调节0.0008
+	
+	 // 1kHz控制频率下，参数需要相应调整
+    // 原来100Hz: Kp=0.11, Ki=0.005, Kd=0.0008
+    // 1kHz(10倍频率): 参数应缩小
+    pid_speed.Kp = 0.15;   // 减小P，避免震荡
+    pid_speed.Ki = 0.0005; // 减小I，防止积分饱和过快
+    pid_speed.Kd = 0.001;  // 可适当增大D，改善动态响应
+}
+
+
+/**********************
+角度环：pid控制
+
+输入：角度误差
+输出：角度环输出(控制力矩)
+**********************/
+float Angle_Control(float Angle_Err)
+{
+//	int PWM_Out;
+
+//	pid_angle.err=Angle_Err;
+//	
+//	pid_angle.integral+=pid_angle.err;
+//	
+//	PWM_Out=pid_angle.Kp * pid_angle.err+ pid_angle.Ki * pid_angle.integral + pid_angle.Kd * (pid_angle.err-pid_angle.err_last);
+
+//	pid_angle.integral=pid_angle.integral>2000?2000:(pid_angle.integral<(-2000)?(-2000):pid_angle.integral);//积分限幅
+//	
+//	pid_angle.err_last=pid_angle.err;
+//	
+//	return PWM_Out;
+	
+	float output;
+    
+    pid_angle.err = Angle_Err;
+    
+    // 积分项（带抗饱和）
+    pid_angle.integral += pid_angle.err;
+    if(pid_angle.integral > 50.0f) pid_angle.integral = 50.0f;
+    if(pid_angle.integral < -50.0f) pid_angle.integral = -50.0f;
+    
+    // PID计算（输出速度 rad/s）
+    output = pid_angle.Kp * pid_angle.err + 
+             pid_angle.Ki * pid_angle.integral + 
+             pid_angle.Kd * (pid_angle.err - pid_angle.err_last);
+    
+    pid_angle.err_last = pid_angle.err;
+    
+    return output;
+}
+/**********************
+速度环：pid控制
+
+输入：速度误差
+输出：速度环输出(控制力矩)
+**********************/
+float Speed_Control(float Speed_Err)
+{
+//	int PWM_Out;
+
+//	pid_speed.err=Speed_Err;
+//	
+//	pid_speed.integral+=pid_speed.err;
+//	
+//	PWM_Out=pid_speed.Kp * pid_speed.err + pid_speed.Ki * pid_speed.integral + pid_speed.Kd * (pid_speed.err-pid_speed.err_last);
+
+//	pid_speed.integral=pid_speed.integral>3000?3000:(pid_speed.integral<(-3000)?(-3000):pid_speed.integral);//积分限幅
+//	
+//	pid_speed.err_last=pid_speed.err;
+//	
+//	return PWM_Out;
+//	
+
+   	float  output;
+    pid_speed.err = Speed_Err;
+    pid_speed.integral += pid_speed.err;
+    
+    // 积分限幅
+    if(pid_speed.integral > 1000.0f) pid_speed.integral = 1000.0f;
+    if(pid_speed.integral < -1000.0f) pid_speed.integral = -1000.0f;
+    
+    output = pid_speed.Kp * pid_speed.err + 
+              pid_speed.Ki * pid_speed.integral + 
+              pid_speed.Kd * (pid_speed.err - pid_speed.err_last);
+    
+    pid_speed.err_last = pid_speed.err;
+    
+    return output;
+}
+
+
