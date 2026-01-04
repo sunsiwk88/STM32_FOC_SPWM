@@ -105,7 +105,6 @@ void AS5600_Update(AS5600_T *a) {
     // 计算当前的累计总角度
     a->total_angle_rad = a->rotation_offset + (current_angle_raw / AS5600_RESOLUTION) * _2PI;
 
-    
     // 计算弧度变化量
     float delta_angle_rad = a->total_angle_rad - prev_total_angle_rad;
 

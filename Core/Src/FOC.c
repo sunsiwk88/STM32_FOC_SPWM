@@ -77,9 +77,9 @@ void FOC_Init_Simple(float power_supply, int _PP, int _DIR)
 
 void Pwm_Init()
 {
-	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
 }
 
 // 设置PWM到控制器输出
@@ -91,9 +91,9 @@ void setPwm(float Ua, float Ub, float Uc)
     Uc = _constrain(Uc, 0.0f, voltage_power_supply);
     
     // 再计算占空比
-    dc_a = (uint32_t)((Ua / voltage_power_supply) * 2400);
-    dc_b = (uint32_t)((Ub / voltage_power_supply) * 2400);
-    dc_c = (uint32_t)((Uc / voltage_power_supply) * 2400);
+    dc_a = (uint32_t)((Ua / voltage_power_supply) * htim1.Instance->ARR);
+    dc_b = (uint32_t)((Ub / voltage_power_supply) * htim1.Instance->ARR);
+    dc_c = (uint32_t)((Uc / voltage_power_supply) * htim1.Instance->ARR);
     
     __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,0.9 * dc_a);
     __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2,0.9 * dc_b);
@@ -176,12 +176,6 @@ void set_Foc_speed(float target_vel)
 	// 限幅
 	torque_out =_constrain(torque_out,-8,8);
 	setTorque( torque_out,0,_electricalAngle());
-//	 // 降低打印频率，避免影响控制性能
-//    static uint16_t print_counter = 0;
-//    if(++print_counter >= 10) {  // 每100ms打印一次
-//        print_counter = 0;
-//        printf("%.2f,%.2f\r\n", serial_motor_target, Sensor_Vel);
-//    }
 }
 
 

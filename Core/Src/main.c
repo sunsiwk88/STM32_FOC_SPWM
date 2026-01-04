@@ -52,7 +52,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+volatile float debug_adc_ua = 0.0f;
+volatile float debug_adc_ub = 0.0f;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -81,10 +82,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     {
         // FOC 控制核心代码
         AS5600_Update(&AngleSensor);        // 更新角度传感器
-       // setTorque(3, _electricalAngle());   // 设置力矩
+//        setTorque(3, _electricalAngle());   // 设置力矩
 				//set_Foc_angle(10);
-//				set_Foc_speed(10);//高级定时器mode3跟普通的up有啥区别？
-		
+				//set_Foc_speed(10);//高级定时器mode3跟普通的up有啥区别？
+//		
     }
 }
 
@@ -162,55 +163,16 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
         
         float u_a = InlineCurrent_ADCToVoltage(adc1_raw);
         float u_b = InlineCurrent_ADCToVoltage(adc2_raw);
+			
+				debug_adc_ua = u_a;
+        debug_adc_ub = u_b;
         
         // 计算三相电流
         InlineCurrent_GetPhaseCurrents(&CurrentSensor, u_a, u_b);
        
-//        // 保持原有的兼容代码（如果其他地方还在使用Ia和Ib）
-//        Ia = CurrentSensor.current_a;
-//        Ib = CurrentSensor.current_b;
     }
 }
 
-/**
- * @brief 快速相位检测（简化版）
- * @note 只测试A相和B相，快速判断对应关系
- */
-void quick_phase_test(void)
-{
-    printf("Fast Phase Detection\r\n");
-    printf("================\r\n");
-    
-    // A相测试
-    printf("A...\r\n");
-    setPwm(6, 0, 0);
-    HAL_Delay(300);
-    printf("Ia=%.3fA, Ib=%.3fA\r\n", CurrentSensor.current_a, CurrentSensor.current_b);
-    
-    if(fabs(CurrentSensor.current_a) > fabs(CurrentSensor.current_b)) {
-        printf("dui ADC1 - A\r\n");
-    } else {
-        printf("cuo ADC1 - B\r\n");
-    }
-    
-    setPwm(0, 0, 0);
-    HAL_Delay(300);
-    
-    // B相测试
-    printf("B...\r\n");
-    setPwm(0, 6, 0);
-    HAL_Delay(300);
-    printf("Ia=%.3fA, Ib=%.3fA\r\n", CurrentSensor.current_a, CurrentSensor.current_b);
-    
-    if(fabs(CurrentSensor.current_b) > fabs(CurrentSensor.current_a)) {
-        printf("dui ADC2 - B\r\n");
-    } else {
-        printf("cuo ADC2 - A\r\n");
-    }
-    
-    setPwm(0, 0, 0);
-    printf("================\r\n");
-}
 
 /* USER CODE END 0 */
 
@@ -256,6 +218,7 @@ int main(void)
   HAL_ADCEx_InjectedStart_IT(&hadc1);
   HAL_ADCEx_InjectedStart(&hadc2);
 	
+	voltage_power_supply = 12.0f;
 	Pwm_Init();
 
   InlineCurrent_Init(&CurrentSensor, 0.02f, 50.0f);  
@@ -269,24 +232,33 @@ int main(void)
 
 //	//初始化FOC	
 //	FOC_Init_Simple(12.0f,7,1);
-	voltage_power_supply = 12.0f;
-	quick_phase_test();       // 快速测试
+    
+//		quick_pwm_check();  // ← 先运行这个
+//	quick_phase_test_stable();       // 快速测试
 
 //	// 启动串口接收中断
 //  HAL_UART_Receive_IT(&huart3, &uart_rx_data, 1);
+  
 
-//	setPwm(6, 0, 0);
-//  HAL_Delay(300);
-//  printf("%f,%f,%f\r\n", Ia, Ib, -(Ia + Ib));
+	setPwm(6, 0, 0);
+	HAL_Delay(10);
+	printf("%f,%f,%f\r\n", CurrentSensor.current_a, 
+	CurrentSensor.current_b, -(CurrentSensor.current_a + CurrentSensor.current_b));
 
-//  setPwm(0, 6, 0);
-//  HAL_Delay(300);
-//  printf("%f,%f,%f\r\n", Ia, Ib, -(Ia + Ib));
+  
 
-//  setPwm(0, 0, 6);
-//  HAL_Delay(300);
-//  printf("%f,%f,%f\r\n", Ia, Ib, -(Ia + Ib));
-//  setPwm(0, 0, 0);
+  setPwm(0, 6, 0);
+	HAL_Delay(10);
+	printf("%f,%f,%f\r\n", CurrentSensor.current_a, 
+	CurrentSensor.current_b, -(CurrentSensor.current_a + CurrentSensor.current_b));
+
+	
+  setPwm(0, 0, 6);
+	HAL_Delay(10);
+	printf("%f,%f,%f\r\n", CurrentSensor.current_a, 
+	CurrentSensor.current_b, -(CurrentSensor.current_a + CurrentSensor.current_b));
+
+  setPwm(0, 0, 0);
 
   /* USER CODE END 2 */
 
@@ -319,17 +291,70 @@ int main(void)
 //        VOFA_JustFloat_Send(Ua, Ub, Uc);
 //        last_vofa_send = HAL_GetTick();
 //    }
+			
 		
 //		   // 在主循环中定期打印电流值
 //        static uint32_t last_print = 0;
-//        if(HAL_GetTick() - last_print >= 100) {  // 每100ms打印一次
+//        if(HAL_GetTick() - last_print >= 50) {  // 每50ms打印一次
 //            printf("Ia=%.3fA, Ib=%.3fA, Ic=%.3fA\r\n", 
 //                   CurrentSensor.current_a, 
 //                   CurrentSensor.current_b, 
 //                   CurrentSensor.current_c);
 //            last_print = HAL_GetTick();
 //        }
-//  
+
+
+//// --- 原始值相位映射测试代码 ---
+//// 确保主输出使能 (MOE)
+//__HAL_TIM_MOE_ENABLE(&htim1); 
+
+//static int test_step = 0;
+//static uint32_t last_step_time = 0;
+
+//if (HAL_GetTick() - last_step_time > 1000) // 每1秒切换一个状态
+//{
+//    test_step++;
+//    if (test_step > 3) test_step = 0;
+//    last_step_time = HAL_GetTick();
+
+//    // 状态切换
+//    switch (test_step)
+//    {
+//        case 0: // 全停 (All OFF)
+//            setPwm(0, 0, 0);
+//            printf("\r\n--- STOP (0,0,0) ---\r\n");
+//            break;
+//        case 1: // A相拉高 (A+, B-, C-)
+//            setPwm(3.0f, 0, 0); // 给3V电压（先小一点，防烧）
+//            printf("\r\n--- Test Phase A (3V,0,0) ---\r\n");
+//            break;
+//        case 2: // B相拉高 (A-, B+, C-)
+//            setPwm(0, 3.0f, 0);
+//            printf("\r\n--- Test Phase B (0,3V,0) ---\r\n");
+//            break;
+//        case 3: // C相拉高 (A-, B-, C+)
+//            setPwm(0, 0, 3.0f);
+//            printf("\r\n--- Test Phase C (0,0,3V) ---\r\n");
+//            break;
+//    }
+//}
+
+//// 每100ms 打印一次 ADC 原始值
+//static uint32_t last_print = 0;
+//if (HAL_GetTick() - last_print > 100)
+//{
+//    // 直接读取注入组的寄存器值（最真实的数据）
+//    // 注意：这里假设你ADC1转换的是rank1，ADC2转换的也是rank1
+//    uint32_t raw_adc1 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
+//    uint32_t raw_adc2 = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);
+//    
+//    // 打印格式：状态 | ADC1原始值 | ADC2原始值
+//    // 正常静止时，值应该在 2048 附近 (如果是3.3V参考电压，中点1.65V)
+//    printf("State %d | Raw1: %lu | Raw2: %lu\r\n", test_step, raw_adc1, raw_adc2);
+//    
+//    last_print = HAL_GetTick();
+//}
+
   }
 	
   /* USER CODE END 3 */
