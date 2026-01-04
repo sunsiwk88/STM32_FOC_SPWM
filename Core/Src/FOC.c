@@ -95,9 +95,9 @@ void setPwm(float Ua, float Ub, float Uc)
     dc_b = (uint32_t)((Ub / voltage_power_supply) * htim1.Instance->ARR);
     dc_c = (uint32_t)((Uc / voltage_power_supply) * htim1.Instance->ARR);
     
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,0.9 * dc_a);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2,0.9 * dc_b);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3,0.9 * dc_c);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,dc_a);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2,dc_b);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3,dc_c);
 }
 
 

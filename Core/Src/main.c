@@ -52,8 +52,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-volatile float debug_adc_ua = 0.0f;
-volatile float debug_adc_ub = 0.0f;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -155,6 +154,7 @@ InlineCurrent_T CurrentSensor;
 /* 修改ADC注入转换完成回调函数 */
 void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
+	
     if (hadc->Instance == ADC1)
     {
         // 读取ADC原始值并转换为电压
@@ -164,12 +164,7 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
         float u_a = InlineCurrent_ADCToVoltage(adc1_raw);
         float u_b = InlineCurrent_ADCToVoltage(adc2_raw);
 			
-				debug_adc_ua = u_a;
-        debug_adc_ub = u_b;
-        
-        // 计算三相电流
         InlineCurrent_GetPhaseCurrents(&CurrentSensor, u_a, u_b);
-       
     }
 }
 
@@ -218,46 +213,35 @@ int main(void)
   HAL_ADCEx_InjectedStart_IT(&hadc1);
   HAL_ADCEx_InjectedStart(&hadc2);
 	
-	voltage_power_supply = 12.0f;
-	Pwm_Init();
-
-  InlineCurrent_Init(&CurrentSensor, 0.02f, 50.0f);  
+	//初始化电流传感器
+  InlineCurrent_Init(&CurrentSensor, 0.02f, 10.0f);  
   // 校准电流传感器
   printf("Start calibrating the current sensor...\r\n");
   InlineCurrent_CalibrateOffsets(&CurrentSensor);
   printf("Calibration complete: OffsetA=%.3fV, OffsetB=%.3fV\r\n", 
-         CurrentSensor.offset_a, CurrentSensor.offset_b);
-				 
+         CurrentSensor.offset_a, CurrentSensor.offset_b);		 
 	HAL_Delay(1000);	 
-
-//	//初始化FOC	
-//	FOC_Init_Simple(12.0f,7,1);
+	
+	//初始化FOC	
+	FOC_Init_Simple(12.0f,7,1);
     
-//		quick_pwm_check();  // ← 先运行这个
-//	quick_phase_test_stable();       // 快速测试
+	// 启动串口接收中断
+  HAL_UART_Receive_IT(&huart3, &uart_rx_data, 1);
 
-//	// 启动串口接收中断
-//  HAL_UART_Receive_IT(&huart3, &uart_rx_data, 1);
-  
-
-	setPwm(6, 0, 0);
-	HAL_Delay(10);
-	printf("%f,%f,%f\r\n", CurrentSensor.current_a, 
-	CurrentSensor.current_b, -(CurrentSensor.current_a + CurrentSensor.current_b));
-
-  
+  setPwm(6, 0, 0);
+  HAL_Delay(300);
+  printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
+	-(CurrentSensor.current_a + CurrentSensor.current_b));
 
   setPwm(0, 6, 0);
-	HAL_Delay(10);
-	printf("%f,%f,%f\r\n", CurrentSensor.current_a, 
-	CurrentSensor.current_b, -(CurrentSensor.current_a + CurrentSensor.current_b));
+  HAL_Delay(300);
+   printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
+	-(CurrentSensor.current_a + CurrentSensor.current_b));
 
-	
   setPwm(0, 0, 6);
-	HAL_Delay(10);
-	printf("%f,%f,%f\r\n", CurrentSensor.current_a, 
-	CurrentSensor.current_b, -(CurrentSensor.current_a + CurrentSensor.current_b));
-
+  HAL_Delay(300);
+  printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
+	-(CurrentSensor.current_a + CurrentSensor.current_b));
   setPwm(0, 0, 0);
 
   /* USER CODE END 2 */
@@ -306,7 +290,7 @@ int main(void)
 
 //// --- 原始值相位映射测试代码 ---
 //// 确保主输出使能 (MOE)
-//__HAL_TIM_MOE_ENABLE(&htim1); 
+////__HAL_TIM_MOE_ENABLE(&htim1); 
 
 //static int test_step = 0;
 //static uint32_t last_step_time = 0;

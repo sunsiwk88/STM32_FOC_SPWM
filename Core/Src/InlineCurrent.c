@@ -17,8 +17,8 @@ void InlineCurrent_Init(InlineCurrent_T *curr, float shunt_resistor, float amp_g
     float volts_to_amps_ratio = 1.0f / shunt_resistor / amp_gain;
     
     // 设置各相增益（根据硬件电路极性调整正负号）
-    curr->gain_a = 	-volts_to_amps_ratio;  // 取决于运放电路设计
-    curr->gain_b = 	-volts_to_amps_ratio;
+    curr->gain_a = 	-1*volts_to_amps_ratio;  // 取决于运放电路设计
+    curr->gain_b = 	-1*volts_to_amps_ratio;
     curr->gain_c = 	volts_to_amps_ratio;
     
     // 初始化测量值
