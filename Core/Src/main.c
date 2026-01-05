@@ -84,7 +84,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 //        setTorque(3, _electricalAngle());   // 设置力矩
 				//set_Foc_angle(10);
 				//set_Foc_speed(10);//高级定时器mode3跟普通的up有啥区别？
-					set_Foc_current(0.2f);
+				set_Foc_current(0.5f);
     }
 }
 
@@ -175,7 +175,6 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
         float u_b = InlineCurrent_ADCToVoltage(adc2_raw);
 			
         InlineCurrent_GetPhaseCurrents(&CurrentSensor, u_a, u_b);
-			
     }
 }
 
@@ -225,7 +224,7 @@ int main(void)
   HAL_ADCEx_InjectedStart(&hadc2);
 	
 	//初始化电流传感器
-  InlineCurrent_Init(&CurrentSensor, 0.02f, 10.0f);  
+  InlineCurrent_Init(&CurrentSensor, 0.02f, 50.0f);  
   // 校准电流传感器
   printf("Start calibrating the current sensor...\r\n");
   InlineCurrent_CalibrateOffsets(&CurrentSensor);

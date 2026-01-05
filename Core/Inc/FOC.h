@@ -18,8 +18,10 @@ extern float Target_Iq;
 
 extern volatile float serial_motor_target;
 
+
 float _normalizeAngle(float angle);
 float _electricalAngle(void);
+
 
 //void FOC_Init(float power_supply);
 //void FOC_AS5600_Init(int _PP,int _DIR);

@@ -67,5 +67,3 @@ float LowPassFilter_Update(LowPassFilter* filter, float x)
     return y;
 }
 
-
-

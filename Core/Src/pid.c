@@ -47,8 +47,8 @@ void PID_init()//初始化pid变量
     pid_current.voltage = 0.0;
     pid_current.integral = 0.0;
     
-    pid_current.Kp = 0.3f;    // P参数
-    pid_current.Ki = 0.06f;    // I参数
+    pid_current.Kp = 0.35f;    // P参数
+    pid_current.Ki = 0.1f;    // I参数
     pid_current.Kd = 0.0f;    // D参数
 }
 

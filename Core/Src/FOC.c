@@ -34,6 +34,7 @@ float _electricalAngle()
   return  _normalizeAngle((float)(DIR * PP) * AS5600_GetOnceAngle(&AngleSensor)-zero_electric_angle);
 }
 
+
  // 初始化电机：
     //  power_supply: 供电电压
     //  _PP: 极对数

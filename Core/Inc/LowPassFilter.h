@@ -18,6 +18,5 @@ void LowPassFilter_Init(LowPassFilter* filter, float time_constant);
 float LowPassFilter_Update(LowPassFilter* filter, float x);
 
 
-
 #endif 
 
