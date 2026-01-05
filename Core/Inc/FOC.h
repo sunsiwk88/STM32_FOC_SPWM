@@ -13,6 +13,9 @@ extern float	Ualpha, Ubeta ;
 extern float Ua , Ub , Uc ;
 extern uint32_t dc_a , dc_b , dc_c;
 
+extern float I_q;
+extern float Target_Iq;
+
 extern volatile float serial_motor_target;
 
 float _normalizeAngle(float angle);
@@ -28,6 +31,7 @@ void setTorque(float Uq,float Ud,float angle_el);
 
 void set_Foc_angle(float target_angle);
 void set_Foc_speed(float target_vel);
+void set_Foc_current(float target_current);
 
 #endif
 

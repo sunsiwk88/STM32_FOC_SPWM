@@ -6,12 +6,14 @@
 
 // 低通滤波器结构体定义
 typedef struct {
-    float Tf;               // 时间常数 (Time constant)
-    float y_prev;           // 上一次滤波输出值 (Previous filter output)
-    unsigned long  timestamp_prev; // 上一次时间戳 (Previous timestamp in milliseconds)
+    float Tf;               // 时间常数
+    float y_prev;           // 上一次滤波输出值 
+    unsigned long  timestamp_prev; // 上一次时间戳
 } LowPassFilter;
 
 extern LowPassFilter speedfilter;
+extern LowPassFilter current_q_filter;
+
 void LowPassFilter_Init(LowPassFilter* filter, float time_constant);
 float LowPassFilter_Update(LowPassFilter* filter, float x);
 

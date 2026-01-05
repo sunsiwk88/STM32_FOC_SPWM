@@ -1,6 +1,7 @@
 #include "LowPassFilter.h"
 
 LowPassFilter speedfilter;
+LowPassFilter current_q_filter;
 
 /**
  * @brief ³õÊ¼»¯µÍÍ¨ÂË²¨Æ÷

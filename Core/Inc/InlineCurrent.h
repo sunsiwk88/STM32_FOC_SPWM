@@ -32,6 +32,8 @@ typedef struct {
     
 } InlineCurrent_T;
 
+extern InlineCurrent_T CurrentSensor;
+
 // º¯ÊıÉùÃ÷
 void InlineCurrent_Init(InlineCurrent_T *curr, float shunt_resistor, float amp_gain);
 void InlineCurrent_CalibrateOffsets(InlineCurrent_T *curr);

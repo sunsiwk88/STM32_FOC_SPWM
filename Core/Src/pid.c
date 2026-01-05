@@ -3,9 +3,9 @@
 float Angle_Out;//角度PWM输出
 float Speed_Out;//速度PWM输出
 
-pid pid_angle;//定义速度环pid
-pid pid_speed;//定义距离环pid
-
+pid pid_speed;//定义速度环pid
+pid pid_angle;//定义角度环pid
+pid pid_current;//定义电流环pid
 /**********************
 PID配置函数:
 **********************/
@@ -38,6 +38,18 @@ void PID_init()//初始化pid变量
     pid_speed.Kp = 0.15;   // 减小P，避免震荡
     pid_speed.Ki = 0.0005; // 减小I，防止积分饱和过快
     pid_speed.Kd = 0.001;  // 可适当增大D，改善动态响应
+		
+		// 电流环 PID 初始化 (参数参考 Arduino 代码: P=1.2, I=0, D=0)
+    pid_current.Set = 0.0;
+    pid_current.Actual = 0.0;
+    pid_current.err = 0.0;
+    pid_current.err_last = 0.0;
+    pid_current.voltage = 0.0;
+    pid_current.integral = 0.0;
+    
+    pid_current.Kp = 0.3f;    // P参数
+    pid_current.Ki = 0.06f;    // I参数
+    pid_current.Kd = 0.0f;    // D参数
 }
 
 
@@ -121,4 +133,28 @@ float Speed_Control(float Speed_Err)
     return output;
 }
 
+
+// 添加电流环控制函数
+// 输入：电流误差 (目标Iq - 实际Iq)
+// 输出：电压 Uq
+float Current_Control(float Current_Err)
+{
+    float output;
+    pid_current.err = Current_Err;
+    
+    // 积分项
+    pid_current.integral += pid_current.err;
+    
+    // 积分限幅 (根据实际电源电压调整，例如电压的一半)
+    if(pid_current.integral > 12.0f) pid_current.integral = 12.0f;
+    if(pid_current.integral < -12.0f) pid_current.integral = -12.0f;
+    
+    output = pid_current.Kp * pid_current.err + 
+             pid_current.Ki * pid_current.integral + 
+             pid_current.Kd * (pid_current.err - pid_current.err_last);
+    
+    pid_current.err_last = pid_current.err;
+    
+    return output;
+}
 

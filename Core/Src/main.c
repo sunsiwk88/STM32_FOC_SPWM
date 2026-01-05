@@ -84,7 +84,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 //        setTorque(3, _electricalAngle());   // 设置力矩
 				//set_Foc_angle(10);
 				//set_Foc_speed(10);//高级定时器mode3跟普通的up有啥区别？
-//		
+					set_Foc_current(0.2f);
     }
 }
 
@@ -134,6 +134,18 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
         HAL_UART_Receive_IT(&huart3, &uart_rx_data, 1);
     }
 }
+void VOFA_JustFloat_Send2(float data_1, float data_2)
+{
+    // 3个电压数据数组
+    float data[2] = {data_1, data_2};
+    
+    // 发送浮点数组数据（小端格式）
+    HAL_UART_Transmit(&huart3, (uint8_t *)data, sizeof(float) * 2, 1000);
+    
+    // 发送帧尾
+    uint8_t tail[4] = {0x00, 0x00, 0x80, 0x7f};
+    HAL_UART_Transmit(&huart3, tail, 4, 1000);
+}
 
 void VOFA_JustFloat_Send(float ua, float ub, float uc)
 {
@@ -148,8 +160,6 @@ void VOFA_JustFloat_Send(float ua, float ub, float uc)
     HAL_UART_Transmit(&huart3, tail, 4, 1000);
 }
 
-// 全局变量定义
-InlineCurrent_T CurrentSensor;
 
 /* 修改ADC注入转换完成回调函数 */
 void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
@@ -165,6 +175,7 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
         float u_b = InlineCurrent_ADCToVoltage(adc2_raw);
 			
         InlineCurrent_GetPhaseCurrents(&CurrentSensor, u_a, u_b);
+			
     }
 }
 
@@ -228,21 +239,21 @@ int main(void)
 	// 启动串口接收中断
   HAL_UART_Receive_IT(&huart3, &uart_rx_data, 1);
 
-  setPwm(6, 0, 0);
-  HAL_Delay(300);
-  printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
-	-(CurrentSensor.current_a + CurrentSensor.current_b));
+//  setPwm(6, 0, 0);
+//  HAL_Delay(300);
+//  printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
+//	-(CurrentSensor.current_a + CurrentSensor.current_b));
 
-  setPwm(0, 6, 0);
-  HAL_Delay(300);
-   printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
-	-(CurrentSensor.current_a + CurrentSensor.current_b));
+//  setPwm(0, 6, 0);
+//  HAL_Delay(300);
+//   printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
+//	-(CurrentSensor.current_a + CurrentSensor.current_b));
 
-  setPwm(0, 0, 6);
-  HAL_Delay(300);
-  printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
-	-(CurrentSensor.current_a + CurrentSensor.current_b));
-  setPwm(0, 0, 0);
+//  setPwm(0, 0, 6);
+//  HAL_Delay(300);
+//  printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
+//	-(CurrentSensor.current_a + CurrentSensor.current_b));
+//  setPwm(0, 0, 0);
 
   /* USER CODE END 2 */
 
@@ -253,7 +264,18 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
+				static uint32_t last_print = 0;
+					if(HAL_GetTick() - last_print >= 20) 
+					{
+            // 格式: target_Iq, actual_Iq, actual_Id
+            // 这样可以在 VOFA+ 中看到三条线
+            // 理想情况：
+            // 1. actual_Iq 应该紧贴着 target_Iq
+            // 2. actual_Id 应该在 0 附近
+						//VOFA_JustFloat_Send2(Target_Iq,I_q);
+            printf("%.3f,%.3f\r\n",Target_Iq,I_q);
+            last_print = HAL_GetTick();
+					}
 //		float vel_m1=AS5600_GetVelocity(&AngleSensor);
 //		float vel=10;
 //		printf("%.2f,%.2f\r\n", vel, vel_m1);
@@ -288,56 +310,7 @@ int main(void)
 //        }
 
 
-//// --- 原始值相位映射测试代码 ---
-//// 确保主输出使能 (MOE)
-////__HAL_TIM_MOE_ENABLE(&htim1); 
 
-//static int test_step = 0;
-//static uint32_t last_step_time = 0;
-
-//if (HAL_GetTick() - last_step_time > 1000) // 每1秒切换一个状态
-//{
-//    test_step++;
-//    if (test_step > 3) test_step = 0;
-//    last_step_time = HAL_GetTick();
-
-//    // 状态切换
-//    switch (test_step)
-//    {
-//        case 0: // 全停 (All OFF)
-//            setPwm(0, 0, 0);
-//            printf("\r\n--- STOP (0,0,0) ---\r\n");
-//            break;
-//        case 1: // A相拉高 (A+, B-, C-)
-//            setPwm(3.0f, 0, 0); // 给3V电压（先小一点，防烧）
-//            printf("\r\n--- Test Phase A (3V,0,0) ---\r\n");
-//            break;
-//        case 2: // B相拉高 (A-, B+, C-)
-//            setPwm(0, 3.0f, 0);
-//            printf("\r\n--- Test Phase B (0,3V,0) ---\r\n");
-//            break;
-//        case 3: // C相拉高 (A-, B-, C+)
-//            setPwm(0, 0, 3.0f);
-//            printf("\r\n--- Test Phase C (0,0,3V) ---\r\n");
-//            break;
-//    }
-//}
-
-//// 每100ms 打印一次 ADC 原始值
-//static uint32_t last_print = 0;
-//if (HAL_GetTick() - last_print > 100)
-//{
-//    // 直接读取注入组的寄存器值（最真实的数据）
-//    // 注意：这里假设你ADC1转换的是rank1，ADC2转换的也是rank1
-//    uint32_t raw_adc1 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
-//    uint32_t raw_adc2 = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);
-//    
-//    // 打印格式：状态 | ADC1原始值 | ADC2原始值
-//    // 正常静止时，值应该在 2048 附近 (如果是3.3V参考电压，中点1.65V)
-//    printf("State %d | Raw1: %lu | Raw2: %lu\r\n", test_step, raw_adc1, raw_adc2);
-//    
-//    last_print = HAL_GetTick();
-//}
 
   }
 	

@@ -1,9 +1,12 @@
 #include "FOC.h"
+#include "InlineCurrent.h" 
 
 // 初始变量及函数定义
 #define _constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
 #define	PI 3.1415926f
 #define _3PI_2 4.71238898038f
+#define	_1_SQRT3 0.57735026919f
+#define	_2_SQRT3 1.15470053838f
 
 int PP=0,DIR=0;
 
@@ -16,8 +19,8 @@ uint32_t dc_a = 0, dc_b = 0, dc_c = 0;
 
 volatile float serial_motor_target = 0;
 
-
-
+float I_q = 0;
+float Target_Iq=0;
 // 归一化角度到 [0,2PI]
 float _normalizeAngle(float angle)
 {
@@ -49,6 +52,8 @@ void FOC_Init_Simple(float power_supply, int _PP, int _DIR)
 		PID_init();
 		// 低通滤波器时间常数Tf设定为5ms
     LowPassFilter_Init(&speedfilter,0.005f);
+		// 电流低通滤波器Tf设定为5ms 
+    LowPassFilter_Init(&current_q_filter, 0.005f);
     // 初始化传感器并等待稳定
     AS5600_Init(&AngleSensor, &hi2c1);
     HAL_Delay(100); 
@@ -177,6 +182,46 @@ void set_Foc_speed(float target_vel)
 	torque_out =_constrain(torque_out,-8,8);
 	setTorque( torque_out,0,_electricalAngle());
 }
+
+
+
+// FOC闭环电流环 (力矩控制)
+// target_current: 目标电流 (安培)
+void set_Foc_current(float target_current)
+{
+		Target_Iq = target_current;
+    // 1. 获取电角度
+    float angle_el = _electricalAngle();
+    
+    // 2. 获取相电流 (从 CurrentSensor 结构体读取)
+    float Ia = CurrentSensor.current_a;
+    float Ib = CurrentSensor.current_b;
+    // float Ic = -(Ia + Ib); 
+    
+    // 3. Clarke 变换 (Ia, Ib -> Ialpha, Ibeta)
+    float I_alpha = Ia;
+    float I_beta = _1_SQRT3 * Ia + _2_SQRT3 * Ib;
+    
+    // 4. Park 变换 (Ialpha, Ibeta -> Iq)
+    // 根据 Arduino 代码逻辑: I_q = I_beta * ct - I_alpha * st;
+    float ct = cos(angle_el);
+    float st = sin(angle_el);
+    
+		I_q = I_beta * ct - I_alpha * st;
+    // float I_d = I_alpha * ct + I_beta * st; // 如果需要控制Id则计算此项
+    
+    // 5. 低通滤波
+    I_q = LowPassFilter_Update(&current_q_filter, I_q);
+    
+    // 6. PID 计算 (目标 - 实际)
+    // 计算出 Q轴电压 Uq
+    float Uq = Current_Control(target_current - I_q);
+    
+    // 7. 输出力矩 (Ud 默认为 0，符合 Arduino 代码逻辑)
+    // 限制 Uq 幅度在 setTorque 中已有实现
+    setTorque(Uq, 0, angle_el);
+}
+
 
 
 

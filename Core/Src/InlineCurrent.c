@@ -1,5 +1,7 @@
 #include "InlineCurrent.h"
 
+InlineCurrent_T CurrentSensor;
+
 /**
  * @brief  初始化电流传感器
  * @param  curr: 电流传感器结构体指针
