@@ -173,6 +173,7 @@ void set_Foc_angle(float target_angle)
 
 
 
+
 //FOC闭环速度环 单位：弧度/秒
 void set_Foc_speed(float target_vel)
 {
@@ -182,6 +183,12 @@ void set_Foc_speed(float target_vel)
 	// 限幅
 	torque_out =_constrain(torque_out,-8,8);
 	setTorque( torque_out,0,_electricalAngle());
+//	 // 降低打印频率，避免影响控制性能
+//    static uint16_t print_counter = 0;
+//    if(++print_counter >= 10) {  // 每100ms打印一次
+//        print_counter = 0;
+//        printf("%.2f,%.2f\r\n", serial_motor_target, Sensor_Vel);
+//    }
 }
 
 

@@ -81,10 +81,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     {
         // FOC 控制核心代码
         AS5600_Update(&AngleSensor);        // 更新角度传感器
-//        setTorque(3, _electricalAngle());   // 设置力矩
-				//set_Foc_angle(10);
-				//set_Foc_speed(10);//高级定时器mode3跟普通的up有啥区别？
-				set_Foc_current(0.5f);
+//        setTorque(3,0, _electricalAngle());   // 设置力矩
+				//set_Foc_angle(3.14);
+				set_Foc_speed(10);//高级定时器mode3跟普通的up有啥区别？
+					//set_Foc_current(0.2f);
+				
     }
 }
 
@@ -175,6 +176,7 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
         float u_b = InlineCurrent_ADCToVoltage(adc2_raw);
 			
         InlineCurrent_GetPhaseCurrents(&CurrentSensor, u_a, u_b);
+
     }
 }
 
@@ -230,12 +232,12 @@ int main(void)
   InlineCurrent_CalibrateOffsets(&CurrentSensor);
   printf("Calibration complete: OffsetA=%.3fV, OffsetB=%.3fV\r\n", 
          CurrentSensor.offset_a, CurrentSensor.offset_b);		 
-	HAL_Delay(1000);	 
+	HAL_Delay(500);	 
 	
 	//初始化FOC	
 	FOC_Init_Simple(12.0f,7,1);
     
-	// 启动串口接收中断
+//	// 启动串口接收中断
   HAL_UART_Receive_IT(&huart3, &uart_rx_data, 1);
 
 //  setPwm(6, 0, 0);
@@ -263,18 +265,18 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-				static uint32_t last_print = 0;
-					if(HAL_GetTick() - last_print >= 20) 
-					{
-            // 格式: target_Iq, actual_Iq, actual_Id
-            // 这样可以在 VOFA+ 中看到三条线
-            // 理想情况：
-            // 1. actual_Iq 应该紧贴着 target_Iq
-            // 2. actual_Id 应该在 0 附近
-						//VOFA_JustFloat_Send2(Target_Iq,I_q);
-            printf("%.3f,%.3f\r\n",Target_Iq,I_q);
-            last_print = HAL_GetTick();
-					}
+//				static uint32_t last_print = 0;
+//					if(HAL_GetTick() - last_print >= 20) 
+//					{
+//            // 格式: target_Iq, actual_Iq, actual_Id
+//            // 这样可以在 VOFA+ 中看到三条线
+//            // 理想情况：
+//            // 1. actual_Iq 应该紧贴着 target_Iq
+//            // 2. actual_Id 应该在 0 附近
+//						//VOFA_JustFloat_Send2(Target_Iq,I_q);
+//            printf("%.3f,%.3f\r\n",Target_Iq,I_q);
+//            last_print = HAL_GetTick();
+//					}
 //		float vel_m1=AS5600_GetVelocity(&AngleSensor);
 //		float vel=10;
 //		printf("%.2f,%.2f\r\n", vel, vel_m1);
@@ -290,7 +292,7 @@ int main(void)
 //				printf("integral: %.2f\r\n", pid_angle.integral);
 		
 		
-    // 每10ms发送一次数据到VOFA+（100Hz刷新率）
+//    // 每10ms发送一次数据到VOFA+（100Hz刷新率）
 //    static uint32_t last_vofa_send = 0;
 //    if(HAL_GetTick() - last_vofa_send >= 10) {
 //        VOFA_JustFloat_Send(Ua, Ub, Uc);
