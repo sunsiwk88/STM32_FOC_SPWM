@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
+#include "dma.h"
 #include "i2c.h"
 #include "tim.h"
 #include "usart.h"
@@ -81,10 +82,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     {
         // FOC 控制核心代码
         AS5600_Update(&AngleSensor);        // 更新角度传感器
-//        setTorque(3,0, _electricalAngle());   // 设置力矩
+
+       // setTorque(2,0, _electricalAngle());   // 设置力矩
 				//set_Foc_angle(3.14);
-				set_Foc_speed(10);//高级定时器mode3跟普通的up有啥区别？
-					//set_Foc_current(0.2f);
+				set_Foc_speed(-10);//高级定时器mode3跟普通的up有啥区别？
+				//set_Foc_current(0.2f);
 				
     }
 }
@@ -148,17 +150,31 @@ void VOFA_JustFloat_Send2(float data_1, float data_2)
     HAL_UART_Transmit(&huart3, tail, 4, 1000);
 }
 
-void VOFA_JustFloat_Send(float ua, float ub, float uc)
+// 定义发送缓冲区，防止局部变量被销毁导致DMA乱码
+float vofa_buffer[3];
+uint8_t vofa_tail[4] = {0x00, 0x00, 0x80, 0x7f};
+uint8_t dma_tx_buffer[16]; // 3*4 + 4 = 16 bytes
+
+void VOFA_JustFloat_Send_DMA(float ua, float ub, float uc)
 {
-    // 3个电压数据数组
-    float data[3] = {ua, ub, uc};
+    // 如果上一次还没发完，就跳过这次发送，防止卡死
+    if(huart3.gState != HAL_UART_STATE_READY) return;
+
+    // 填充数据
+    union { float f; uint8_t b[4]; } u; // 使用联合体转换，避免指针强制转换的对齐风险
     
-    // 发送浮点数组数据（小端格式）
-    HAL_UART_Transmit(&huart3, (uint8_t *)data, sizeof(float) * 3, 1000);
+    u.f = ua; dma_tx_buffer[0]=u.b[0]; dma_tx_buffer[1]=u.b[1]; dma_tx_buffer[2]=u.b[2]; dma_tx_buffer[3]=u.b[3];
+    u.f = ub; dma_tx_buffer[4]=u.b[0]; dma_tx_buffer[5]=u.b[1]; dma_tx_buffer[6]=u.b[2]; dma_tx_buffer[7]=u.b[3];
+    u.f = uc; dma_tx_buffer[8]=u.b[0]; dma_tx_buffer[9]=u.b[1]; dma_tx_buffer[10]=u.b[2]; dma_tx_buffer[11]=u.b[3];
     
-    // 发送帧尾
-    uint8_t tail[4] = {0x00, 0x00, 0x80, 0x7f};
-    HAL_UART_Transmit(&huart3, tail, 4, 1000);
+    // 复制帧尾
+    dma_tx_buffer[12] = 0x00;
+    dma_tx_buffer[13] = 0x00;
+    dma_tx_buffer[14] = 0x80;
+    dma_tx_buffer[15] = 0x7f;
+
+    // 启动 DMA 发送 (非阻塞，CPU瞬间干完)
+    HAL_UART_Transmit_DMA(&huart3, dma_tx_buffer, 16);
 }
 
 
@@ -176,7 +192,7 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
         float u_b = InlineCurrent_ADCToVoltage(adc2_raw);
 			
         InlineCurrent_GetPhaseCurrents(&CurrentSensor, u_a, u_b);
-
+				
     }
 }
 
@@ -212,6 +228,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_I2C1_Init();
   MX_USART3_UART_Init();
   MX_TIM1_Init();
@@ -292,13 +309,32 @@ int main(void)
 //				printf("integral: %.2f\r\n", pid_angle.integral);
 		
 		
-//    // 每10ms发送一次数据到VOFA+（100Hz刷新率）
+    // 每10ms发送一次数据到VOFA+（100Hz刷新率）
+    static uint32_t last_vofa_send = 0;
+    if(HAL_GetTick() - last_vofa_send >= 10) {
+        VOFA_JustFloat_Send_DMA(Ua, Ub, Uc);
+        last_vofa_send = HAL_GetTick();
+    }
+			   /* 方案1: 提高采样率看真实波形 (推荐先用这个) */
 //    static uint32_t last_vofa_send = 0;
-//    if(HAL_GetTick() - last_vofa_send >= 10) {
-//        VOFA_JustFloat_Send(Ua, Ub, Uc);
+//    if(HAL_GetTick() - last_vofa_send >= 1) {  // 改为1ms = 1kHz采样
+//        // 发送交流分量（去掉6V偏置，更清晰）
+//        float Ua_ac = Ua - 6.0f;
+//        float Ub_ac = Ub - 6.0f;
+//        float Uc_ac = Uc - 6.0f;
+//        VOFA_JustFloat_Send_DMA(Ua_ac, Ub_ac, Uc_ac);
 //        last_vofa_send = HAL_GetTick();
 //    }
-			
+//		 /* 方案2: 同时监控速度和电角度，判断是否稳定运行 */
+//    static uint32_t last_debug_print = 0;
+//    if(HAL_GetTick() - last_debug_print >= 100) {  // 每100ms打印一次
+//        float current_speed = AS5600_GetVelocity(&AngleSensor);
+//        float current_angle = AS5600_GetAccumulateAngle(&AngleSensor);
+//        printf("Speed:%.2f rad/s, Angle:%.2f rad, Torque:%.2f\r\n", 
+//               DIR * current_speed, current_angle, 
+//               pid_speed.Kp * pid_speed.err + pid_speed.Ki * pid_speed.integral);
+//        last_debug_print = HAL_GetTick();
+//    }
 		
 //		   // 在主循环中定期打印电流值
 //        static uint32_t last_print = 0;

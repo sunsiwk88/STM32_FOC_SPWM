@@ -18,7 +18,6 @@ extern float Target_Iq;
 
 extern volatile float serial_motor_target;
 
-
 float _normalizeAngle(float angle);
 float _electricalAngle(void);
 

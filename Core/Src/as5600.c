@@ -108,7 +108,6 @@ void AS5600_Update(AS5600_T *a) {
     // 计算弧度变化量
     float delta_angle_rad = a->total_angle_rad - prev_total_angle_rad;
 
-
    // 速度计算
     float raw_velocity = delta_angle_rad / delta_t_s;
 		//滤波

@@ -35,9 +35,9 @@ void PID_init()//初始化pid变量
 	 // 1kHz控制频率下，参数需要相应调整
     // 原来100Hz: Kp=0.11, Ki=0.005, Kd=0.0008
     // 1kHz(10倍频率): 参数应缩小
-    pid_speed.Kp = 0.15;   // 减小P，避免震荡
-    pid_speed.Ki = 0.0005; // 减小I，防止积分饱和过快
-    pid_speed.Kd = 0.001;  // 可适当增大D，改善动态响应
+    pid_speed.Kp = 0.13;   // 减小P，避免震荡0.15
+    pid_speed.Ki = 0.0007; // 减小I，防止积分饱和过快0.0005
+    pid_speed.Kd = 0.0005;  // 可适当增大D，改善动态响应
 		
 		// 电流环 PID 初始化 (参数参考 Arduino 代码: P=1.2, I=0, D=0)
     pid_current.Set = 0.0;
