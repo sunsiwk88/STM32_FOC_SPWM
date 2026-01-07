@@ -16,7 +16,7 @@ void InlineCurrent_Init(InlineCurrent_T *curr, float shunt_resistor, float amp_g
     
     // 计算电压到电流的转换比率
     // I = U / (R_shunt * Gain)
-    float volts_to_amps_ratio = 1.0f / shunt_resistor / amp_gain;
+    float volts_to_amps_ratio = 1.0f / shunt_resistor / (amp_gain/5);
     
     // 设置各相增益（根据硬件电路极性调整正负号）
     curr->gain_a = 	-1*volts_to_amps_ratio;  // 取决于运放电路设计
@@ -97,4 +97,26 @@ void InlineCurrent_GetPhaseCurrents(InlineCurrent_T *curr, float voltage_a, floa
 	
 }
 
+/**
+ * @brief  电流传感器测试
+ * @retval None
+ */
+void InlineCurrent_test()
+{	
+  setPwm(6, 0, 0);
+  HAL_Delay(300);
+  printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
+	-(CurrentSensor.current_a + CurrentSensor.current_b));
+
+  setPwm(0, 6, 0);
+  HAL_Delay(300);
+   printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
+	-(CurrentSensor.current_a + CurrentSensor.current_b));
+
+  setPwm(0, 0, 6);
+  HAL_Delay(300);
+  printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
+	-(CurrentSensor.current_a + CurrentSensor.current_b));
+  setPwm(0, 0, 0);
+}
 

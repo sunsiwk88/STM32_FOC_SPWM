@@ -1,6 +1,8 @@
 #include "FOC.h"
 #include "InlineCurrent.h" 
 
+FOC_ControlMode ctrl_mode=FOC_MODE_IDLE;
+
 // 初始变量及函数定义
 #define _constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
 #define	PI 3.1415926f
@@ -8,7 +10,7 @@
 #define	_1_SQRT3 0.57735026919f
 #define	_2_SQRT3 1.15470053838f
 #define _SQRT3 1.732050807568877f
-#define _2PI_3 2.094395102393195f  // 2*PI/3 = 120度
+#define _2PI_3 2.094395102393195f  // 2*PI/3 
 
 int PP=0,DIR=0;
 
@@ -38,11 +40,13 @@ float _electricalAngle()
 }
 
 
- // 初始化电机：
-    //  power_supply: 供电电压
-    //  _PP: 极对数
-    //  _DIR: 方向(1 or -1)
-
+/**
+ * @brief  初始化电机
+ * @param  power_supply: 供电电压
+ * @param  _PP: 极对数
+ * @param  _DIR: 方向(1 or -1)
+ * @retval None
+ */
 void FOC_Init_Simple(float power_supply, int _PP, int _DIR)
 {
 
@@ -64,7 +68,7 @@ void FOC_Init_Simple(float power_supply, int _PP, int _DIR)
     
     // 电机对齐
     setTorque(3,0,_3PI_2);
-    HAL_Delay(500);
+    HAL_Delay(100);
     
     // 读取零点
     float angle_sum = 0;
@@ -78,7 +82,7 @@ void FOC_Init_Simple(float power_supply, int _PP, int _DIR)
   
     // 释放力矩
     setTorque(0,0,_3PI_2);
-    HAL_Delay(500);
+    HAL_Delay(100);
 	
     HAL_TIM_Base_Start_IT(&htim2);
    // printf("FOC初始化完成，零点：%.3f\r\n", zero_electric_angle);
@@ -90,6 +94,7 @@ void Pwm_Init()
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
 }
+
 
 // 设置PWM到控制器输出
 void setPwm(float Ua, float Ub, float Uc)
@@ -109,11 +114,13 @@ void setPwm(float Ua, float Ub, float Uc)
     __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3,dc_c);
 }
 
- // 设置三相电压：
-    //  Uq: Q轴电压，控制力矩
-    //  Ud: D轴电压
-    //  angle_el: 电角度
-
+/**
+ * @brief  设置三相电压
+ * @param  Uq: Q轴电压，控制力矩
+ * @param  Ud: D轴电压
+ * @param  angle_el: 电角度
+ * @retval None
+ */
 void setTorque(float Uq,float Ud,float angle_el) 
 {
 		Uq=_constrain(Uq,-voltage_power_supply/2,voltage_power_supply/2);
@@ -135,7 +142,11 @@ void setTorque(float Uq,float Ud,float angle_el)
 }
 
 
-//FOC闭环速度环 单位：弧度/秒
+/**
+ * @brief  FOC闭环速度环
+ * @param  target_vel:目标速度值 单位：弧度/秒
+ * @retval None
+ */
 void set_Foc_speed(float target_vel)
 {
 	float current_velocity = AS5600_GetVelocity(&AngleSensor);	
@@ -153,7 +164,12 @@ void set_Foc_speed(float target_vel)
 //    }
 }
 
-//FOC闭环位置环 单位：弧度
+/**
+ * @brief  FOC闭环位置环
+ * @note   串级PID
+ * @param  target_vel:目标角度值 单位：弧度
+ * @retval None
+ */
 void set_Foc_angle(float target_angle)
 {
 	
@@ -166,12 +182,10 @@ void set_Foc_angle(float target_angle)
 	
     // 计算角度误差（弧度）
     float angle_error = target_angle - DIR * current_angle;
-	
 		angle_error = _constrain(angle_error, -3.0f, 3.0f);
 	
     // 角度环PID → 目标速度
     float target_velocity = Angle_Control(angle_error);
-	
 		target_velocity = _constrain(target_velocity, -15.0f, 15.0f);
 
     // 读取当前速度
@@ -179,7 +193,6 @@ void set_Foc_angle(float target_angle)
     
     // 速度环PID → 力矩
     float vel_error = target_velocity - DIR * current_velocity;
-		
     float torque_out = Speed_Control(vel_error);
     
     // 限制力矩
@@ -190,40 +203,41 @@ void set_Foc_angle(float target_angle)
 	
 }
 
-// FOC闭环电流环 (力矩控制)
-// target_current: 目标电流 (安培)
+/**
+ * @brief  FOC闭环电流环
+ * @note   串级PID
+ * @param  target_current: 目标电流 单位：安培
+ * @retval None
+ */
 void set_Foc_current(float target_current)
 {
 		Target_Iq = target_current;
-    // 1. 获取电角度
+    // 获取电角度
     float angle_el = _electricalAngle();
     
-    // 2. 获取相电流 (从 CurrentSensor 结构体读取)
+    // 获取相电流 
     float Ia = CurrentSensor.current_a;
     float Ib = CurrentSensor.current_b;
     // float Ic = -(Ia + Ib); 
     
-    // 3. Clarke 变换 (Ia, Ib -> Ialpha, Ibeta)
+    // Clarke 变换 (Ia, Ib -> Ialpha, Ibeta)
     float I_alpha = Ia;
     float I_beta = _1_SQRT3 * Ia + _2_SQRT3 * Ib;
     
-    // 4. Park 变换 (Ialpha, Ibeta -> Iq)
-    // 根据 Arduino 代码逻辑: I_q = I_beta * ct - I_alpha * st;
+    // Park 变换 (Ialpha, Ibeta -> Iq)
     float ct = cos(angle_el);
     float st = sin(angle_el);
     
 		I_q = I_beta * ct - I_alpha * st;
     // float I_d = I_alpha * ct + I_beta * st; // 如果需要控制Id则计算此项
     
-    // 5. 低通滤波
+    // 低通滤波
     I_q = LowPassFilter_Update(&current_q_filter, I_q);
     
-    // 6. PID 计算 (目标 - 实际)
-    // 计算出 Q轴电压 Uq
+    // PID
     float Uq = Current_Control(target_current - I_q);
     
-    // 7. 输出力矩 (Ud 默认为 0，符合 Arduino 代码逻辑)
-    // 限制 Uq 幅度在 setTorque 中已有实现
+    // 输出力矩
     setTorque(Uq, 0, angle_el);
 }
 

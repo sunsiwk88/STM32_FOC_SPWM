@@ -39,5 +39,5 @@ void InlineCurrent_Init(InlineCurrent_T *curr, float shunt_resistor, float amp_g
 void InlineCurrent_CalibrateOffsets(InlineCurrent_T *curr);
 void InlineCurrent_GetPhaseCurrents(InlineCurrent_T *curr, float ia_voltage, float ib_voltage);
 float InlineCurrent_ADCToVoltage(uint32_t adc_value);
-
+void InlineCurrent_test(void);
 #endif /* __INLINE_CURRENT_H */

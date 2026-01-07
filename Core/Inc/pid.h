@@ -18,9 +18,6 @@ extern pid pid_current;//定义电流环pid
 
 void PID_init(void);//PID初始化
 
-//extern float Angle_Out;
-//extern float Speed_Out;
-
 float Angle_Control(float Angle_Err);
 float Speed_Control(float Speed_Err);
 float Current_Control(float Current_Err);

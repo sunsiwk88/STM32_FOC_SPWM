@@ -30,6 +30,7 @@
 #include "as5600.h"
 #include "FOC.h"
 #include <stdlib.h>  // for atof
+#include <string.h>
 #include "LowPassFilter.h"
 #include "pid.h"
 #include "InlineCurrent.h"
@@ -71,110 +72,111 @@ int fputc(int ch, FILE *f)
 	return (ch);
 }
 
+void VOFA_JustFloat_Send(float data_1, float data_2,float data_3)
+{
+    // 3个电压数据数组
+    float data[3] = {data_1,data_2,data_3};
+    
+    // 发送浮点数组数据（小端格式）
+    HAL_UART_Transmit_DMA(&huart3, (uint8_t *)data, sizeof(float)*2);
+    
+    // 发送帧尾
+    uint8_t tail[4] = {0x00, 0x00, 0x80, 0x7f};
+    HAL_UART_Transmit_DMA(&huart3, tail, 4);
+}
+
+float ctrl_target = 0.0f;
+#define RX_BUFFER_SIZE 128
+uint8_t rx_buffer[RX_BUFFER_SIZE];   
+
 /**
  * @brief 定时器周期回调函数
  * @note  每1ms自动调用一次，在这里执行FOC控制
  */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-    
     if(htim == &htim2)
     {
         // FOC 控制核心代码
         AS5600_Update(&AngleSensor);        // 更新角度传感器
+        switch (ctrl_mode)
+        {
+            case FOC_MODE_CURRENT:
+                set_Foc_current(ctrl_target);
+                break;
 
-       // setTorque(2,0, _electricalAngle());   // 设置力矩
-				//set_Foc_angle(3.14);
-				set_Foc_speed(-10);//高级定时器mode3跟普通的up有啥区别？
-				//set_Foc_current(0.2f);
+            case FOC_MODE_VELOCITY:
+                set_Foc_speed(ctrl_target);
+                break;
+            
+            case FOC_MODE_ANGLE:
+                set_Foc_angle(ctrl_target);
+                break;
+
+            case FOC_MODE_IDLE:
+            default:
+                setTorque(0, 0, _electricalAngle()); // 零力矩/空闲
+                break;
+				}
 				
     }
 }
+		// 解析指令
+    // 格式: "vel_3.5" --速度模式, 3.5 rad/s
+    // 格式: "ang_1.57" --角度模式, 1.57 rad
+    // 格式: "cur_0.5" --电流模式, 0.5 A
+    // 格式: "stop" --停
+void Process_Serial_Command(uint8_t *buf, uint16_t len)
+{
+    // 确保字符串结束符，防止越界
+    if (len >= RX_BUFFER_SIZE) len = RX_BUFFER_SIZE - 1;
+    buf[len] = '\0';
+    
+    char *cmd_ptr = (char *)buf;
+    float val = 0.0f;
 
-// 全局变量定义
-#define UART_RX_BUFFER_SIZE 32
-uint8_t uart_rx_buffer[UART_RX_BUFFER_SIZE];
-uint8_t uart_rx_data;
-volatile uint8_t uart_data_ready = 0;
+    if (strncmp(cmd_ptr, "vel_", 4) == 0) {
+        val = atof(cmd_ptr + 4); 
+        ctrl_mode = FOC_MODE_VELOCITY;
+        ctrl_target = val;
+      //printf("Mode: Velocity,Target: %.2f\r\n", val);
+    }
+    else if (strncmp(cmd_ptr, "ang_", 4) == 0) {
+        val = atof(cmd_ptr + 4);
+        ctrl_mode = FOC_MODE_ANGLE;
+        ctrl_target = val;
+			//printf("Mode: Angle,Target: %.2f\r\n", val);
+    }
+    else if (strncmp(cmd_ptr, "cur_", 4) == 0) {
+        val = atof(cmd_ptr + 4);
+        ctrl_mode = FOC_MODE_CURRENT;
+        ctrl_target = val;
+      //printf("Mode: Current,Target: %.2f\r\n", val);
+    }
+    else if (strncmp(cmd_ptr, "stop", 4) == 0) {
+        ctrl_mode = FOC_MODE_IDLE;
+        ctrl_target = 0.0f;
+        setTorque(0, 0, _electricalAngle()); 
+       // printf("Mode: Stopped\r\n");
+    }
+}
 
 /**
-  * @brief 串口中断回调函数
-  * @param 调用回调函数的串口
-  * @note  串口每次收到数据以后都会关闭中断，如需重复使用，必须再次开启
-  * @retval None
-  */  
-
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+  * @brief 扩展接收事件回调函数
+  * @param huart 串口句柄
+  * @param Size  接收到的数据字节数
+  */
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
     if (huart->Instance == USART3)
     {
-        static uint8_t rx_index = 0;
-        
-        // 接收字符
-        if (uart_rx_data == '\n' || uart_rx_data == '\r')
-        {
-            // 遇到换行符，解析数据
-            if (rx_index > 0)
-            {
-                uart_rx_buffer[rx_index] = '\0';
-                serial_motor_target = atof((char*)uart_rx_buffer);
-								printf("m0_angle:%.3f\r\n",serial_motor_target);
-                rx_index = 0;
-            }
-        }
-        else if (rx_index < UART_RX_BUFFER_SIZE - 1)
-        {
-            // 存储字符
-            uart_rx_buffer[rx_index++] = uart_rx_data;
-        }
-        else
-        {
-            // 缓冲区溢出，重置
-            rx_index = 0;
-        }
-        
-        // 重新启动接收
-        HAL_UART_Receive_IT(&huart3, &uart_rx_data, 1);
+        // 1. 处理接收到的数据
+        Process_Serial_Command(rx_buffer, Size);
+
+        // 2. 重新启动接收
+        HAL_UARTEx_ReceiveToIdle_DMA(&huart3, rx_buffer, RX_BUFFER_SIZE);
+				__HAL_DMA_DISABLE_IT(&hdma_usart3_rx,DMA_IT_HT);
     }
-}
-void VOFA_JustFloat_Send2(float data_1, float data_2)
-{
-    // 3个电压数据数组
-    float data[2] = {data_1, data_2};
-    
-    // 发送浮点数组数据（小端格式）
-    HAL_UART_Transmit(&huart3, (uint8_t *)data, sizeof(float) * 2, 1000);
-    
-    // 发送帧尾
-    uint8_t tail[4] = {0x00, 0x00, 0x80, 0x7f};
-    HAL_UART_Transmit(&huart3, tail, 4, 1000);
-}
-
-// 定义发送缓冲区，防止局部变量被销毁导致DMA乱码
-float vofa_buffer[3];
-uint8_t vofa_tail[4] = {0x00, 0x00, 0x80, 0x7f};
-uint8_t dma_tx_buffer[16]; // 3*4 + 4 = 16 bytes
-
-void VOFA_JustFloat_Send_DMA(float ua, float ub, float uc)
-{
-    // 如果上一次还没发完，就跳过这次发送，防止卡死
-    if(huart3.gState != HAL_UART_STATE_READY) return;
-
-    // 填充数据
-    union { float f; uint8_t b[4]; } u; // 使用联合体转换，避免指针强制转换的对齐风险
-    
-    u.f = ua; dma_tx_buffer[0]=u.b[0]; dma_tx_buffer[1]=u.b[1]; dma_tx_buffer[2]=u.b[2]; dma_tx_buffer[3]=u.b[3];
-    u.f = ub; dma_tx_buffer[4]=u.b[0]; dma_tx_buffer[5]=u.b[1]; dma_tx_buffer[6]=u.b[2]; dma_tx_buffer[7]=u.b[3];
-    u.f = uc; dma_tx_buffer[8]=u.b[0]; dma_tx_buffer[9]=u.b[1]; dma_tx_buffer[10]=u.b[2]; dma_tx_buffer[11]=u.b[3];
-    
-    // 复制帧尾
-    dma_tx_buffer[12] = 0x00;
-    dma_tx_buffer[13] = 0x00;
-    dma_tx_buffer[14] = 0x80;
-    dma_tx_buffer[15] = 0x7f;
-
-    // 启动 DMA 发送 (非阻塞，CPU瞬间干完)
-    HAL_UART_Transmit_DMA(&huart3, dma_tx_buffer, 16);
 }
 
 
@@ -192,17 +194,12 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc)
         float u_b = InlineCurrent_ADCToVoltage(adc2_raw);
 			
         InlineCurrent_GetPhaseCurrents(&CurrentSensor, u_a, u_b);
-				
     }
 }
 
 
 /* USER CODE END 0 */
 
-/**
-  * @brief  The application entry point.
-  * @retval int
-  */
 int main(void)
 {
 
@@ -242,9 +239,14 @@ int main(void)
   HAL_ADCEx_InjectedStart_IT(&hadc1);
   HAL_ADCEx_InjectedStart(&hadc2);
 	
+	//启动串口DMA空闲接收
+	HAL_UARTEx_ReceiveToIdle_DMA(&huart3, rx_buffer, RX_BUFFER_SIZE);
+	__HAL_DMA_DISABLE_IT(&hdma_usart3_rx,DMA_IT_HT);
+	
 	//初始化电流传感器
   InlineCurrent_Init(&CurrentSensor, 0.02f, 50.0f);  
-  // 校准电流传感器
+	
+  //校准电流传感器
   printf("Start calibrating the current sensor...\r\n");
   InlineCurrent_CalibrateOffsets(&CurrentSensor);
   printf("Calibration complete: OffsetA=%.3fV, OffsetB=%.3fV\r\n", 
@@ -254,24 +256,6 @@ int main(void)
 	//初始化FOC	
 	FOC_Init_Simple(12.0f,7,1);
     
-//	// 启动串口接收中断
-  HAL_UART_Receive_IT(&huart3, &uart_rx_data, 1);
-
-//  setPwm(6, 0, 0);
-//  HAL_Delay(300);
-//  printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
-//	-(CurrentSensor.current_a + CurrentSensor.current_b));
-
-//  setPwm(0, 6, 0);
-//  HAL_Delay(300);
-//   printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
-//	-(CurrentSensor.current_a + CurrentSensor.current_b));
-
-//  setPwm(0, 0, 6);
-//  HAL_Delay(300);
-//  printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
-//	-(CurrentSensor.current_a + CurrentSensor.current_b));
-//  setPwm(0, 0, 0);
 
   /* USER CODE END 2 */
 
@@ -282,60 +266,47 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-//				static uint32_t last_print = 0;
-//					if(HAL_GetTick() - last_print >= 20) 
-//					{
-//            // 格式: target_Iq, actual_Iq, actual_Id
-//            // 这样可以在 VOFA+ 中看到三条线
-//            // 理想情况：
-//            // 1. actual_Iq 应该紧贴着 target_Iq
-//            // 2. actual_Id 应该在 0 附近
-//						//VOFA_JustFloat_Send2(Target_Iq,I_q);
-//            printf("%.3f,%.3f\r\n",Target_Iq,I_q);
-//            last_print = HAL_GetTick();
-//					}
-//		float vel_m1=AS5600_GetVelocity(&AngleSensor);
-//		float vel=10;
-//		printf("%.2f,%.2f\r\n", vel, vel_m1);
-		
-//			float angle=serial_motor_target;
-//      float angle_m1=AS5600_GetAccumulateAngle(&AngleSensor);
-//			printf("%.2f,%.2f\r\n", 3.14, angle_m1);
-//		
-//		    float current = AS5600_GetAccumulateAngle(&AngleSensor);
-//        float velocity = AS5600_GetVelocity(&AngleSensor);
-//        printf("angle:%.2f, vel:%.2f\r\n", current, velocity);
-//				HAL_Delay(10);
-//				printf("integral: %.2f\r\n", pid_angle.integral);
-		
-		
+			static uint32_t last_print_time = 0;
+      
+      if (HAL_GetTick() - last_print_time >= 10)
+      {
+          float actual_val = 0.0f;
+					switch (ctrl_mode)
+          {
+              case FOC_MODE_VELOCITY:
+                  // 获取当前速度 (rad/s)
+                  actual_val = AS5600_GetVelocity(&AngleSensor) * DIR;
+                  break;
+                  
+              case FOC_MODE_ANGLE:
+                  // 获取当前累计角度 (rad)
+                  actual_val = AS5600_GetAccumulateAngle(&AngleSensor) * DIR;
+                  break;
+                  
+              case FOC_MODE_CURRENT:
+                  // 获取当前 Q 轴电流 (Iq)
+                  actual_val = I_q; 
+                  break;
+                  
+              default:
+                  actual_val = 0.0f;
+                  break;
+          }
+				  if (ctrl_mode != FOC_MODE_IDLE)
+          {
+              printf("%.3f,%.3f\r\n", ctrl_target, actual_val);
+          }
+          
+          last_print_time = HAL_GetTick();
+			}
+			
     // 每10ms发送一次数据到VOFA+（100Hz刷新率）
-    static uint32_t last_vofa_send = 0;
-    if(HAL_GetTick() - last_vofa_send >= 10) {
-        VOFA_JustFloat_Send_DMA(Ua, Ub, Uc);
-        last_vofa_send = HAL_GetTick();
-    }
-			   /* 方案1: 提高采样率看真实波形 (推荐先用这个) */
 //    static uint32_t last_vofa_send = 0;
-//    if(HAL_GetTick() - last_vofa_send >= 1) {  // 改为1ms = 1kHz采样
-//        // 发送交流分量（去掉6V偏置，更清晰）
-//        float Ua_ac = Ua - 6.0f;
-//        float Ub_ac = Ub - 6.0f;
-//        float Uc_ac = Uc - 6.0f;
-//        VOFA_JustFloat_Send_DMA(Ua_ac, Ub_ac, Uc_ac);
+//    if(HAL_GetTick() - last_vofa_send >= 10) {
+//        VOFA_JustFloat_Send_DMA(Ua, Ub, Uc);
 //        last_vofa_send = HAL_GetTick();
 //    }
-//		 /* 方案2: 同时监控速度和电角度，判断是否稳定运行 */
-//    static uint32_t last_debug_print = 0;
-//    if(HAL_GetTick() - last_debug_print >= 100) {  // 每100ms打印一次
-//        float current_speed = AS5600_GetVelocity(&AngleSensor);
-//        float current_angle = AS5600_GetAccumulateAngle(&AngleSensor);
-//        printf("Speed:%.2f rad/s, Angle:%.2f rad, Torque:%.2f\r\n", 
-//               DIR * current_speed, current_angle, 
-//               pid_speed.Kp * pid_speed.err + pid_speed.Ki * pid_speed.integral);
-//        last_debug_print = HAL_GetTick();
-//    }
-		
+			   
 //		   // 在主循环中定期打印电流值
 //        static uint32_t last_print = 0;
 //        if(HAL_GetTick() - last_print >= 50) {  // 每50ms打印一次
@@ -345,9 +316,6 @@ int main(void)
 //                   CurrentSensor.current_c);
 //            last_print = HAL_GetTick();
 //        }
-
-
-
 
   }
 	
