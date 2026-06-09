@@ -1,5 +1,7 @@
 #include "InlineCurrent.h"
 
+InlineCurrent_T CurrentSensor;
+
 /**
  * @brief  初始化电流传感器
  * @param  curr: 电流传感器结构体指针
@@ -14,11 +16,11 @@ void InlineCurrent_Init(InlineCurrent_T *curr, float shunt_resistor, float amp_g
     
     // 计算电压到电流的转换比率
     // I = U / (R_shunt * Gain)
-    float volts_to_amps_ratio = 1.0f / shunt_resistor / amp_gain;
+    float volts_to_amps_ratio = 1.0f / shunt_resistor / (amp_gain/5);
     
     // 设置各相增益（根据硬件电路极性调整正负号）
-    curr->gain_a = 	volts_to_amps_ratio;  // 取决于运放电路设计
-    curr->gain_b = 	volts_to_amps_ratio;
+    curr->gain_a = 	-1*volts_to_amps_ratio;  // 取决于运放电路设计
+    curr->gain_b = 	-1*volts_to_amps_ratio;
     curr->gain_c = 	volts_to_amps_ratio;
     
     // 初始化测量值
@@ -39,7 +41,7 @@ void InlineCurrent_Init(InlineCurrent_T *curr, float shunt_resistor, float amp_g
  */
 float InlineCurrent_ADCToVoltage(uint32_t adc_value)
 {
-    return ((float)ADC_REFERENCE_VOLTAGE * adc_value / ADC_MAX_VALUE )-1.65f;
+    return ((float)ADC_REFERENCE_VOLTAGE * adc_value / ADC_MAX_VALUE ) - 1.65f;
 }
 
 /**
@@ -92,6 +94,29 @@ void InlineCurrent_GetPhaseCurrents(InlineCurrent_T *curr, float voltage_a, floa
     
     // 根据基尔霍夫定律计算：Ia + Ib + Ic = 0
     curr->current_c = -(curr->current_a + curr->current_b);
+	
 }
 
+/**
+ * @brief  电流传感器测试
+ * @retval None
+ */
+void InlineCurrent_test()
+{	
+  setPwm(6, 0, 0);
+  HAL_Delay(300);
+  printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
+	-(CurrentSensor.current_a + CurrentSensor.current_b));
+
+  setPwm(0, 6, 0);
+  HAL_Delay(300);
+   printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
+	-(CurrentSensor.current_a + CurrentSensor.current_b));
+
+  setPwm(0, 0, 6);
+  HAL_Delay(300);
+  printf("%f,%f,%f\r\n", CurrentSensor.current_a, CurrentSensor.current_b, 
+	-(CurrentSensor.current_a + CurrentSensor.current_b));
+  setPwm(0, 0, 0);
+}
 

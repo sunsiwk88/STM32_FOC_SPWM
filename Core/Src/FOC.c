@@ -1,9 +1,17 @@
 #include "FOC.h"
+#include "InlineCurrent.h" 
+
+FOC_ControlMode ctrl_mode=FOC_MODE_IDLE;
 
 // 初始变量及函数定义
 #define _constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
+#define min(a, b) ((a) < (b) ? (a) : (b))
 #define	PI 3.1415926f
 #define _3PI_2 4.71238898038f
+#define	_1_SQRT3 0.57735026919f
+#define	_2_SQRT3 1.15470053838f
+#define _SQRT3 1.732050807568877f
+
 
 int PP=0,DIR=0;
 
@@ -16,7 +24,8 @@ uint32_t dc_a = 0, dc_b = 0, dc_c = 0;
 
 volatile float serial_motor_target = 0;
 
-
+float I_q = 0;
+float Target_Iq=0;
 
 // 归一化角度到 [0,2PI]
 float _normalizeAngle(float angle)
@@ -31,11 +40,14 @@ float _electricalAngle()
   return  _normalizeAngle((float)(DIR * PP) * AS5600_GetOnceAngle(&AngleSensor)-zero_electric_angle);
 }
 
- // 初始化电机：
-    //  power_supply: 供电电压
-    //  _PP: 极对数
-    //  _DIR: 方向(1 or -1)
 
+/**
+ * @brief  初始化电机
+ * @param  power_supply: 供电电压
+ * @param  _PP: 极对数
+ * @param  _DIR: 方向(1 or -1)
+ * @retval None
+ */
 void FOC_Init_Simple(float power_supply, int _PP, int _DIR)
 {
 
@@ -49,13 +61,15 @@ void FOC_Init_Simple(float power_supply, int _PP, int _DIR)
 		PID_init();
 		// 低通滤波器时间常数Tf设定为5ms
     LowPassFilter_Init(&speedfilter,0.005f);
+		// 电流低通滤波器Tf设定为5ms 
+    LowPassFilter_Init(&current_q_filter, 0.005f);
     // 初始化传感器并等待稳定
     AS5600_Init(&AngleSensor, &hi2c1);
     HAL_Delay(100); 
     
     // 电机对齐
     setTorque(3,0,_3PI_2);
-    HAL_Delay(500);
+    HAL_Delay(100);
     
     // 读取零点
     float angle_sum = 0;
@@ -69,7 +83,7 @@ void FOC_Init_Simple(float power_supply, int _PP, int _DIR)
   
     // 释放力矩
     setTorque(0,0,_3PI_2);
-    HAL_Delay(500);
+    HAL_Delay(100);
 	
     HAL_TIM_Base_Start_IT(&htim2);
    // printf("FOC初始化完成，零点：%.3f\r\n", zero_electric_angle);
@@ -77,10 +91,11 @@ void FOC_Init_Simple(float power_supply, int _PP, int _DIR)
 
 void Pwm_Init()
 {
-	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
 }
+
 
 // 设置PWM到控制器输出
 void setPwm(float Ua, float Ub, float Uc)
@@ -95,40 +110,71 @@ void setPwm(float Ua, float Ub, float Uc)
     dc_b = (uint32_t)((Ub / voltage_power_supply) * 2400);
     dc_c = (uint32_t)((Uc / voltage_power_supply) * 2400);
     
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,0.9 * dc_a);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2,0.9 * dc_b);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3,0.9 * dc_c);
+	  dc_a = min(dc_a,2160); // 留出10%的电流采样时间
+		dc_b = min(dc_b,2160);
+		dc_c = min(dc_c,2160);
+	
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,dc_a);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2,dc_b);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3,dc_c);
 }
 
-
-
- // 设置三相电压：
-    //  Uq: Q轴电压，控制力矩
-    //  Ud: D轴电压
-    //  angle_el: 电角度
-
+/**
+ * @brief  设置三相电压
+ * @param  Uq: Q轴电压，控制力矩
+ * @param  Ud: D轴电压
+ * @param  angle_el: 电角度
+ * @retval None
+ */
 void setTorque(float Uq,float Ud,float angle_el) 
 {
 		Uq=_constrain(Uq,-voltage_power_supply/2,voltage_power_supply/2);
-		
+		Ud = _constrain(Ud, -voltage_power_supply/2, voltage_power_supply/2);
+	
 		angle_el = _normalizeAngle(angle_el);
 	
-    // 帕克逆变换
-    Ualpha = -Uq * sin(angle_el); //简单情况下，默认Ud=0
-    Ubeta = Uq * cos(angle_el); 
+    // Park逆变换
+		Ualpha = -Uq * sin(angle_el) + Ud * cos(angle_el); 
+    Ubeta  =  Uq * cos(angle_el) + Ud * sin(angle_el);
 
-    // 克拉克逆变换
+    // Clarke逆变换
 		//	加上voltage_power_supply/2是为了平移曲线到供电电压的中间，避免出现负数电压
     Ua = Ualpha + voltage_power_supply/2;
-    Ub = (sqrt(3)*Ubeta - Ualpha)/2 + voltage_power_supply/2;
-    Uc = (-Ualpha - sqrt(3)*Ubeta)/2 + voltage_power_supply/2;
+    Ub = (_SQRT3*Ubeta - Ualpha)/2 + voltage_power_supply/2;
+    Uc = (-Ualpha - _SQRT3*Ubeta)/2 + voltage_power_supply/2;
     
     setPwm(Ua, Ub, Uc);
 }
 
 
+/**
+ * @brief  FOC闭环速度环
+ * @param  target_vel:目标速度值 单位：弧度/秒
+ * @retval None
+ */
+void set_Foc_speed(float target_vel)
+{
+	float current_velocity = AS5600_GetVelocity(&AngleSensor);	
+	float vel_error = target_vel - DIR * current_velocity ;
+	float torque_out = Speed_Control(vel_error);
 
-//FOC闭环位置环 单位：弧度
+	// 限幅
+	torque_out =_constrain(torque_out,-8,8);
+	setTorque( torque_out,0,_electricalAngle());
+//	 // 降低打印频率，避免影响控制性能
+//    static uint16_t print_counter = 0;
+//    if(++print_counter >= 10) {  // 每100ms打印一次
+//        print_counter = 0;
+//        printf("%.2f,%.2f\r\n", serial_motor_target, Sensor_Vel);
+//    }
+}
+
+/**
+ * @brief  FOC闭环位置环
+ * @note   串级PID
+ * @param  target_vel:目标角度值 单位：弧度
+ * @retval None
+ */
 void set_Foc_angle(float target_angle)
 {
 	
@@ -141,12 +187,10 @@ void set_Foc_angle(float target_angle)
 	
     // 计算角度误差（弧度）
     float angle_error = target_angle - DIR * current_angle;
-	
 		angle_error = _constrain(angle_error, -3.0f, 3.0f);
 	
     // 角度环PID → 目标速度
     float target_velocity = Angle_Control(angle_error);
-	
 		target_velocity = _constrain(target_velocity, -15.0f, 15.0f);
 
     // 读取当前速度
@@ -154,7 +198,6 @@ void set_Foc_angle(float target_angle)
     
     // 速度环PID → 力矩
     float vel_error = target_velocity - DIR * current_velocity;
-		
     float torque_out = Speed_Control(vel_error);
     
     // 限制力矩
@@ -165,24 +208,44 @@ void set_Foc_angle(float target_angle)
 	
 }
 
-
-
-//FOC闭环速度环 单位：弧度/秒
-void set_Foc_speed(float target_vel)
+/**
+ * @brief  FOC闭环电流环
+ * @note   串级PID
+ * @param  target_current: 目标电流 单位：安培
+ * @retval None
+ */
+void set_Foc_current(float target_current)
 {
-	float current_velocity = AS5600_GetVelocity(&AngleSensor);
-	float vel_error = target_vel - DIR * current_velocity ;
-	float torque_out = Speed_Control(vel_error);
-	// 限幅
-	torque_out =_constrain(torque_out,-8,8);
-	setTorque( torque_out,0,_electricalAngle());
-//	 // 降低打印频率，避免影响控制性能
-//    static uint16_t print_counter = 0;
-//    if(++print_counter >= 10) {  // 每100ms打印一次
-//        print_counter = 0;
-//        printf("%.2f,%.2f\r\n", serial_motor_target, Sensor_Vel);
-//    }
+		Target_Iq = target_current;
+    // 获取电角度
+    float angle_el = _electricalAngle();
+    
+    // 获取相电流 
+    float Ia = CurrentSensor.current_a;
+    float Ib = CurrentSensor.current_b;
+    // float Ic = -(Ia + Ib); 
+    
+    // Clarke变换等幅值形式 (Ia, Ib -> Ialpha, Ibeta)
+    float I_alpha = Ia;
+    float I_beta = _1_SQRT3 * Ia + _2_SQRT3 * Ib;
+    
+    // Park变换 (Ialpha, Ibeta -> Iq)
+    float ct = cos(angle_el);
+    float st = sin(angle_el);
+    
+		I_q = I_beta * ct - I_alpha * st;
+    // float I_d = I_alpha * ct + I_beta * st; // 如果需要控制Id则计算此项
+    
+    // 低通滤波
+    I_q = LowPassFilter_Update(&current_q_filter, I_q);
+    
+    // PID
+    float Uq = Current_Control(target_current - I_q);
+    
+    // 输出力矩
+    setTorque(Uq, 0, angle_el);
 }
+
 
 
 

@@ -12,16 +12,15 @@ typedef struct//定义pid结构体
 	float integral;//定义积分值
 }pid;
 
-extern pid pid_angle;//定义速度环pid
-extern pid pid_speed;//定义距离环pid
+extern pid pid_speed;//定义速度环pid
+extern pid pid_angle;//定义角度环pid
+extern pid pid_current;//定义电流环pid
 
 void PID_init(void);//PID初始化
 
-//extern float Angle_Out;
-//extern float Speed_Out;
-
 float Angle_Control(float Angle_Err);
 float Speed_Control(float Speed_Err);
+float Current_Control(float Current_Err);
 
-
+               
 #endif

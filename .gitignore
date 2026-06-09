@@ -1,0 +1,25 @@
+# MDK-ARM build outputs
+MDK-ARM/**/*.o
+MDK-ARM/**/*.crf
+MDK-ARM/**/*.d
+MDK-ARM/**/*.axf
+MDK-ARM/**/*.hex
+MDK-ARM/**/*.htm
+MDK-ARM/**/*.map
+MDK-ARM/**/*.lnp
+MDK-ARM/**/*.dep
+MDK-ARM/**/*.lst
+MDK-ARM/**/*.iex
+MDK-ARM/**/*.tra
+MDK-ARM/**/*.scvd
+MDK-ARM/**/JLink*
+MDK-ARM/**/*.uvguix.*
+MDK-ARM/**/RTE/
+MDK-ARM/**/DebugConfig/
+
+# STM32 CubeMX
+.mxproject
+
+# Editor/IDE
+*.uvoptx
+*.uvguix.*
