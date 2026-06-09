@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 语言
+
+永远使用中文回复。
+
 ## Project Overview
 
 STM32F103C8 (Cortex-M3) based **FOC (Field-Oriented Control)** motor driver using SPWM modulation. Uses STM32CubeMX HAL, built with Keil MDK-ARM (uVision 5, ARMCC V5.06).
